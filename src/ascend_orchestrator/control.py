@@ -7,8 +7,11 @@ from .models import (ConflictError, ContractError, FencingError,
                      digest, evidence_document, new_id, now, resource_spec,
                      step_document, task_document)
 from .orchestrator import classify_task, initial_steps, operator_subdag, update_phase
+from .observability import ObservabilityManager
 from .scheduler import Scheduler
+from .rsi import RSIManager
 from .store import Store
+from .windows import WindowManager
 
 
 class ControlPlane:
@@ -17,7 +20,12 @@ class ControlPlane:
         self.store = Store(db_path)
         self.workspace_root = os.path.abspath(workspace_root)
         self.scheduler = Scheduler(self.store, max_agent_workers, lease_ttl)
+        tuning = self.store.meta("scheduler_tuning", {})
+        self.scheduler.max_agent_workers = tuning.get("max_agent_workers", max_agent_workers)
         self.adapters = AdapterRegistry(self)
+        self.rsi = RSIManager(self)
+        self.windows = WindowManager(self)
+        self.observability = ObservabilityManager(self)
         os.makedirs(self.workspace_root, exist_ok=True)
 
     def close(self):
@@ -301,7 +309,7 @@ class ControlPlane:
             existing = {s["step_id"] for s in self.store.all("steps")}
             new_steps = [step_document(task_id, s["kind"], s.get("resource"), s.get("dependencies"),
                                        priority=s.get("priority", task["priority"]), role=s.get("role", "GENERAL"),
-                                       metadata=s.get("metadata")) for s in steps]
+                                       contract_version=s.get("contract_version"), metadata=s.get("metadata")) for s in steps]
             all_ids = existing | {s["step_id"] for s in new_steps}
             if any(d not in all_ids for s in new_steps for d in s["dependencies"]):
                 raise ContractError("step dependency does not exist")
@@ -407,6 +415,7 @@ class ControlPlane:
                 raise ConflictError("lease is not awaiting cleanup")
             lease["status"] = "RELEASED" if lease["status"] == "RELEASING" else "CLEANED"
             lease["cleanup_confirmed"] = True
+            lease["released_at"] = now()
             self.store.put("leases", lease)
             self.store.event("LEASE_CLEANED", lease_id, after=lease["status"])
             return lease
@@ -429,10 +438,11 @@ class ControlPlane:
 
     def run_step(self, step_id, lease_id, epoch, correctness="PASSED", metrics=None,
                  artifact_digests=None, contract_versions=None, owner=None,
-                 simulated=True, request_id=None):
+                 simulated=True, candidate_id=None, request_id=None):
         payload = {"step_id": step_id, "lease_id": lease_id, "epoch": epoch, "correctness": correctness,
                    "metrics": metrics, "artifact_digests": artifact_digests,
-                   "contract_versions": contract_versions, "owner": owner, "simulated": simulated}
+                   "contract_versions": contract_versions, "owner": owner, "simulated": simulated,
+                   "candidate_id": candidate_id}
         def write():
             step = self.store.require("steps", step_id)
             task = self.store.require("tasks", step["task_id"])
@@ -489,7 +499,8 @@ class ControlPlane:
             self.store.put("executions", execution)
             evidence = evidence_document(task["task_id"], step_id,
                                          {"kind": "CONTROLLED_RUNNER", "name": expected_runner, "version": "0.1.0"},
-                                         correctness, role=step["role"], contract_version=step["contract_version"],
+                                         correctness, candidate_id=candidate_id, role=step["role"],
+                                         contract_version=step["contract_version"],
                                          performance=metrics, environment=environment, logs_uri=log_path)
             self.store.put("evidence", evidence)
             step["outputs"].append(evidence["evidence_id"])
@@ -498,6 +509,7 @@ class ControlPlane:
             self.store.put("steps", step)
             lease["status"] = "RELEASED"
             lease["cleanup_confirmed"] = True
+            lease["released_at"] = now()
             self.store.put("leases", lease)
             if group_lease:
                 group = self.store.require("resource_groups", step["resource_group_id"])
@@ -505,6 +517,7 @@ class ControlPlane:
                     other = self.store.require("leases", other_id)
                     other["status"] = "RELEASED"
                     other["cleanup_confirmed"] = True
+                    other["released_at"] = now()
                     self.store.put("leases", other)
                 group["status"] = "RELEASED"
                 group["finished_at"] = now()
@@ -570,6 +583,7 @@ class ControlPlane:
                 lease = self.store.require("leases", lease_id)
                 lease["status"] = "RELEASED"
                 lease["cleanup_confirmed"] = True
+                lease["released_at"] = now()
                 self.store.put("leases", lease)
             group["status"] = "RELEASED"
             group["finished_at"] = now()
@@ -589,6 +603,51 @@ class ControlPlane:
         valid = {"TRAINING", "INFERENCE"}.issubset(roles)
         return {"valid": valid, "contract_version": spec["contract_version"],
                 "reason": None if valid else "both branch functional evidence packs are required"}
+
+    def campaign_create(self, *args, **kwargs):
+        return self.rsi.create(*args, **kwargs)
+
+    def campaign_get(self, campaign_id):
+        return self.rsi.get(campaign_id)
+
+    def campaign_append_candidate(self, *args, **kwargs):
+        return self.rsi.append_candidate(*args, **kwargs)
+
+    def campaign_record_evaluation(self, *args, **kwargs):
+        return self.rsi.record_evaluation(*args, **kwargs)
+
+    def campaign_assert_baseline(self, campaign_id, evidence_id):
+        return self.rsi.assert_baseline(campaign_id, evidence_id)
+
+    def campaign_checkpoint(self, *args, **kwargs):
+        return self.rsi.checkpoint(*args, **kwargs)
+
+    def campaign_stop(self, *args, **kwargs):
+        return self.rsi.stop(*args, **kwargs)
+
+    def campaign_joint_batch(self, *args, **kwargs):
+        return self.rsi.joint_batch(*args, **kwargs)
+
+    def measurement_window_create(self, *args, **kwargs):
+        return self.windows.create(*args, **kwargs)
+
+    def measurement_window_close(self, *args, **kwargs):
+        return self.windows.close(*args, **kwargs)
+
+    def interference_profile_record(self, *args, **kwargs):
+        return self.observability.record_interference_profile(*args, **kwargs)
+
+    def scheduler_tuning(self):
+        return self.observability.tuning_recommendations()
+
+    def scheduler_tuning_apply(self, *args, **kwargs):
+        return self.observability.apply_tuning(*args, **kwargs)
+
+    def metrics_snapshot(self):
+        return self.observability.metrics()
+
+    def dashboard_generate(self, path):
+        return self.observability.dashboard(path)
 
     def list_capabilities(self):
         return self.adapters.list()

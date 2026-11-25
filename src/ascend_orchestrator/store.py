@@ -12,7 +12,8 @@ from .models import ConflictError, canonical, new_id, now
 TABLES = (
     "tasks", "steps", "nodes", "leases", "reservations", "evidence",
     "model_specs", "model_artifacts", "rl_specs", "resource_groups",
-    "executions", "campaigns", "candidates", "capabilities", "requests",
+    "executions", "campaigns", "candidates", "evaluations", "windows", "profiles",
+    "capabilities", "requests",
 )
 
 
@@ -75,6 +76,12 @@ class Store:
             id_field = "resource_group_id"
         elif table == "capabilities":
             id_field = "capability_id"
+        elif table == "evaluations":
+            id_field = "evaluation_id"
+        elif table == "windows":
+            id_field = "window_id"
+        elif table == "profiles":
+            id_field = "profile_id"
         entity_id = document[id_field]
         self.conn.execute(
             "INSERT INTO %s(id, kind, data, updated_at) VALUES(?,?,?,?) "

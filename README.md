@@ -1,6 +1,6 @@
 # Ascend Orchestrator Prototype
 
-昇腾模型与算子适配智能体的资源调度控制面原型，实现设计文档 V1.2 的**阶段一：自动阶段决策与高利用率资源闭环**。
+昇腾模型与算子适配智能体的资源调度与 RSI 原型，覆盖设计文档 V1.2 的四个阶段：动态资源闭环、单算子 RSI、模型级/端到端 RSI，以及调度优化与效率看板。
 
 项目使用 Python 标准库和 SQLite，无需安装运行时依赖，适合本地验证调度语义、Task DAG、模型产物契约和 RL 双分支编排。
 
@@ -16,7 +16,11 @@
 - **RL 双分支**：契约冻结与升级、训练/推理独立 DAG、原子 ResourceGroup 和最小闭环证据。
 - **可审计扩展**：EvidencePack、追加式事件日志、幂等写请求、msAgent/CANNBot 适配器示例。
 
-Campaign/Candidate 数据表已预留，阶段一不包含自动候选优化。
+- **RSI 闭环**：冻结基线、比较协议、候选谱系、正确性门禁、接受/回退、预算停止和 checkpoint。
+- **分层验收**：单算子、模型级与端到端独立接受权，RL 双分支初筛和受控联合候选批次。
+- **实验窗口**：多候选共享限时节点集合或全局静默窗口，窗口结束保存 Campaign checkpoint。
+- **调度优化**：历史 P90 回填、资源装箱、干扰画像驱动 `AUTO` 静默和持久化并发调优。
+- **效率看板**：资源、排队、有效候选、测量无效率和正确性指标，支持独立 HTML 报告。
 
 ## 环境要求
 
@@ -34,6 +38,9 @@ cd ascend_orchestrator
 
 # 运行模拟演示；重复执行时使用 --reset 替换演示数据库
 PYTHONPATH=src python3 -m ascend_orchestrator demo --reset
+
+# 运行三层 RSI 演示并生成 HTML 看板
+PYTHONPATH=src python3 -m ascend_orchestrator rsi-demo --reset
 
 # 查看集群与队列状态
 PYTHONPATH=src python3 -m ascend_orchestrator --db var/demo.db status
@@ -71,6 +78,10 @@ ascend-orchestrator [--db PATH] [--workspace PATH] COMMAND
 | 命令 | 说明 |
 | --- | --- |
 | `demo [--reset]` | 运行模拟算子与 RL 闭环演示；默认不覆盖已有数据库 |
+| `rsi-demo [--reset]` | 运行算子、模型和端到端 Campaign，生成 `var/rsi-dashboard.html` |
+| `dashboard [--output PATH]` | 从持久化状态生成独立 HTML 效率看板 |
+| `metrics` | 输出资源、任务、RSI 和正确性指标 |
+| `tuning` | 输出 Agent、构建槽和候选批量调优建议 |
 | `serve [--host HOST] [--port PORT]` | 启动本地 HTTP JSON API，默认 `127.0.0.1:8765` |
 | `status` | 输出节点、健康卡、队列、预留和可避免空闲状态 |
 | `events` | 输出追加式审计事件 |
@@ -120,6 +131,9 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 │   ├── scheduler.py     # 工作保持、拓扑、互斥、回填和原子资源组
 │   ├── orchestrator.py  # 自动轨道识别、DAG 模板和阶段推导
 │   ├── control.py       # 控制面、执行门禁、模型与 RL 流程
+│   ├── rsi.py           # 三层 Campaign、候选、比较、预算与 checkpoint
+│   ├── windows.py       # 批量限时静默实验窗口
+│   ├── observability.py # P90 之外的调优建议、指标和 HTML 看板
 │   ├── adapters.py      # msAgent / CANNBot 契约示例
 │   ├── api.py           # HTTP JSON API
 │   ├── demo.py          # 可重复演示
@@ -133,9 +147,10 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 - [系统设计 V1.2](docs/design-v1.2.md)
 - [HTTP API 使用说明](docs/api.md)
+- [RSI 与效率看板](docs/rsi.md)
 - [贡献与开发指南](CONTRIBUTING.md)
 
-后续阶段依次为单算子 RSI、模型级与端到端 RSI、调度优化与规模化。当前调度采用确定性在线启发式，不追求全局最优；P90 历史估计、复杂公平性和利用率看板不属于本原型。
+四个阶段的原型能力均已打通。当前调度采用确定性在线启发式，不追求理论全局最优；自动候选代码生成、真实硬件遥测和多控制节点高可用仍属于生产化工作。
 
 ## 许可证
 

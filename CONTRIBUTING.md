@@ -33,6 +33,7 @@ ascend-orchestrator demo
 python -m compileall -q src tests
 python -m unittest discover -s tests -v
 ascend-orchestrator demo --reset
+ascend-orchestrator rsi-demo --reset
 ```
 
 测试数据库和工作区应使用临时目录，不要提交 `var/`、SQLite 数据库、日志或运行证据。

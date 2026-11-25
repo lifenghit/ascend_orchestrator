@@ -166,6 +166,35 @@ curl -s -X POST http://127.0.0.1:8765/tasks \
 
 内置示例能力为 `msagent.offline.profiler-analysis` 和 `cannbot.controlled.patch-example`。适配器失败会显式记录为 `FAILED`，不会被解释成“没有发现问题”。
 
+## RSI Campaign 与实验窗口
+
+| 方法与路径 | 对应能力 |
+| --- | --- |
+| `GET /campaigns/{campaign_id}` | Campaign、候选谱系和评估记录 |
+| `POST /campaigns` | 创建冻结基线、比较合同和预算 |
+| `POST /campaigns/candidates` | 追加假设和候选 |
+| `POST /campaigns/evaluations` | 绑定候选 EvidencePack 并作出接受/拒绝决策 |
+| `POST /campaigns/checkpoint` | 保存可恢复状态 |
+| `POST /campaigns/stop` | 记录停止原因 |
+| `POST /campaigns/joint-batch` | 生成经过独立初筛和契约过滤的 RL 联合批次 |
+| `POST /windows` | 创建批量限时测量窗口 |
+| `POST /windows/close` | 关闭窗口、清理预留并 checkpoint |
+
+创建 Campaign 的请求字段为 `task_id`、`level`、`baseline_evidence_id`、`comparison_contract`、`budget`、`role` 和可选父 Campaign。候选评估只接受 `candidate_id`、`evidence_id`、`measurement_valid` 和 Leader，不直接接受调用方声明的“接受”结论。
+
+详细合同和动作空间见 [RSI 与效率看板](rsi.md)。
+
+## 调优与效率指标
+
+| 方法与路径 | 说明 |
+| --- | --- |
+| `GET /metrics` | 资源、任务、RSI 和正确性指标 |
+| `GET /tuning` | Agent、构建槽和候选批量建议 |
+| `POST /profiles/interference` | 记录干扰画像并生成静默建议 |
+| `POST /tuning/apply` | 持久化明确指定的调度并发参数 |
+
+HTML 看板通过 CLI `dashboard` 生成，避免 API 直接写入调用方任意路径。
+
 ## 部署安全
 
 当前 API 没有认证和 TLS，不应直接暴露到公共网络。生产使用必须在可信网络中增加认证授权、请求大小限制、远程 Executor 身份校验、设备权限隔离和敏感日志治理。

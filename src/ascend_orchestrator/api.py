@@ -34,6 +34,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 result = self.control.events()
             elif path == ["capabilities"]:
                 result = self.control.list_capabilities()
+            elif path == ["metrics"]:
+                result = self.control.metrics_snapshot()
+            elif path == ["tuning"]:
+                result = self.control.scheduler_tuning()
+            elif len(path) == 2 and path[0] == "campaigns":
+                result = self.control.campaign_get(path[1])
             elif len(path) == 2 and path[0] == "tasks":
                 result = self.control.get_task(path[1])
             elif len(path) == 2 and path[0] == "evidence":
@@ -76,6 +82,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                 "leases/release": lambda: c.release_lease(**data),
                 "leases/cleanup": lambda: c.confirm_cleanup(**data),
                 "capabilities/invoke": lambda: c.invoke_capability(**data),
+                "campaigns": lambda: c.campaign_create(**data),
+                "campaigns/candidates": lambda: c.campaign_append_candidate(**data),
+                "campaigns/evaluations": lambda: c.campaign_record_evaluation(**data),
+                "campaigns/checkpoint": lambda: c.campaign_checkpoint(**data),
+                "campaigns/stop": lambda: c.campaign_stop(**data),
+                "campaigns/joint-batch": lambda: c.campaign_joint_batch(**data),
+                "windows": lambda: c.measurement_window_create(**data),
+                "windows/close": lambda: c.measurement_window_close(**data),
+                "profiles/interference": lambda: c.interference_profile_record(**data),
+                "tuning/apply": lambda: c.scheduler_tuning_apply(**data),
                 "recover": lambda: c.recover(),
             }
             if route in routes:

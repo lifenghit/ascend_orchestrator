@@ -1,5 +1,7 @@
 """Deterministic work-conserving scheduler and fencing-aware lease allocator."""
 
+import math
+
 from .models import ConflictError, lease_document, new_id, now
 
 
@@ -101,6 +103,16 @@ class Scheduler:
             nodes.append(node)
         return sorted(nodes, key=lambda n: n["node_id"])
 
+    def performance_isolation(self, resource):
+        requested = resource.get("performance_isolation", "NONE")
+        if requested != "AUTO":
+            return requested
+        profiles = [p for p in self.store.all("profiles")
+                    if p.get("resource_scope") in {resource["scope"], "ANY"}]
+        if not profiles:
+            return "NODE_SET_QUIET"
+        return sorted(profiles, key=lambda p: p["created_at"])[-1]["recommended_quiet"]
+
     def _occupied(self):
         occupied = {}
         quiet_nodes = set()
@@ -117,9 +129,10 @@ class Scheduler:
                 continue
             spec = step["resource"] if step else {"performance_isolation": "NONE", "isolation": "DEVICE_EXCLUSIVE"}
             nodes = {r.split(":", 1)[0] for r in lease["resources"]}
-            if spec.get("performance_isolation") == "GLOBAL_QUIET":
+            quiet = self.performance_isolation(spec)
+            if quiet == "GLOBAL_QUIET":
                 global_quiet = True
-            elif spec.get("performance_isolation") == "NODE_SET_QUIET":
+            elif quiet == "NODE_SET_QUIET":
                 quiet_nodes.update(nodes)
             if spec.get("isolation") == "NODE_SET_EXCLUSIVE":
                 exclusive_nodes.update(nodes)
@@ -175,7 +188,7 @@ class Scheduler:
             available.append((node, cards))
         scope = resource["scope"]
         if scope == "SINGLE_CARD":
-            for node, cards in available:
+            for node, cards in sorted(available, key=lambda item: (len(item[1]), item[0]["node_id"])):
                 if cards:
                     return [(node, cards[:1])]
             return None
@@ -203,8 +216,24 @@ class Scheduler:
                 return reservation
         return None
 
+    def duration_estimate(self, step):
+        durations = []
+        steps = {s["step_id"]: s for s in self.store.all("steps")}
+        for execution in self.store.all("executions"):
+            previous = steps.get(execution["step_id"])
+            if (execution["status"] == "SUCCEEDED" and previous and previous["kind"] == step.get("kind")
+                    and previous["resource"]["scope"] == step["resource"]["scope"]):
+                duration = execution["finished_at"] - execution["started_at"]
+                if duration > 0:
+                    durations.append(duration)
+        if not durations:
+            return step["scheduling"]["estimated_duration_seconds"]
+        durations.sort()
+        index = max(0, math.ceil(len(durations) * 0.9) - 1)
+        return durations[index]
+
     def _reservation_blocks(self, step, node_ids, at):
-        estimate = step["scheduling"]["estimated_duration_seconds"]
+        estimate = self.duration_estimate(step)
         for reservation in self.store.all("reservations"):
             if reservation["step_id"] == step["step_id"] or reservation["status"] not in {"PENDING", "ACTIVE"}:
                 continue
