@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ascend-orchestrator-prototype"
+version = "0.1.0"
+description = "Phase-one deterministic resource control plane for Ascend model and operator agents"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+keywords = ["ascend", "npu", "scheduler", "orchestrator", "reinforcement-learning"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development",
+  "Topic :: System :: Distributed Computing",
+]
+
+[project.scripts]
+ascend-orchestrator = "ascend_orchestrator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
