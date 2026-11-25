@@ -7,6 +7,7 @@ name = "ascend-orchestrator-prototype"
 version = "0.1.0"
 description = "Phase-one deterministic resource control plane for Ascend model and operator agents"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.9"
 dependencies = []
 keywords = ["ascend", "npu", "scheduler", "orchestrator", "reinforcement-learning"]
@@ -14,6 +15,7 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.9",
